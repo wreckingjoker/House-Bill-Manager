@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>House Bill Manager</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="page-wrap">
+
+  <!-- Top bar -->
+  <div class="top-bar">
+    <div class="brand">
+      <span class="brand-emoji">🏠</span>
+      <div class="brand-title">House Bill</div>
+      <div class="brand-month" id="month-display"></div>
+    </div>
+    <nav class="nav-pills">
+      <a href="index.html" class="active-house">House Bill</a>
+      <a href="food.html">Food Mess</a>
+    </nav>
+  </div>
+
+  <div class="rule"></div>
+
+  <main>
+
+    <!-- Stat chips -->
+    <div class="stat-row">
+      <div class="stat-chip teal">
+        <div class="s-label">Additional Total</div>
+        <div class="s-value" id="stat-additional">0</div>
+        <div class="s-sub">AED shared expenses</div>
+      </div>
+      <div class="stat-chip amber">
+        <div class="s-label">Add. Share / Person</div>
+        <div class="s-value" id="stat-per-person">0</div>
+        <div class="s-sub">AED each</div>
+      </div>
+      <div class="stat-chip indigo">
+        <div class="s-label">House Total / Person</div>
+        <div class="s-value" id="stat-house-total">600</div>
+        <div class="s-sub">AED per member</div>
+      </div>
+    </div>
+
+    <!-- Add Expenses -->
+    <div class="card stripe-teal">
+      <div class="card-head">
+        <span class="card-title">Additional Shared Expenses</span>
+      </div>
+      <div class="card-body">
+        <div class="add-form">
+          <input type="text"   id="item-name"   placeholder="Item name (e.g. Water)" />
+          <input type="number" id="item-amount" placeholder="Amount (AED)" min="0" step="0.01" style="max-width:180px" />
+          <button class="btn-add" onclick="addExpense()">+ Add</button>
+        </div>
+
+        <div class="expense-list" id="expense-list">
+          <p class="empty-msg">No additional expenses yet.</p>
+        </div>
+
+        <div class="expense-total" id="expense-total" style="display:none">
+          <span class="et-label">Split equally among 10 members</span>
+          <div class="et-nums">
+            <div class="et-item">
+              <span class="et-num" id="total-amount">0</span>
+              <span class="et-sub">TOTAL AED</span>
+            </div>
+            <div class="et-item">
+              <span class="et-num" id="per-person-amount">0</span>
+              <span class="et-sub">PER PERSON</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bill Summary -->
+    <div class="card stripe-teal">
+      <div class="card-head">
+        <span class="card-title">Bill Summary</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Member</th>
+              <th class="r">Rent</th>
+              <th class="r">Add. Share</th>
+              <th class="r">House Total</th>
+              <th class="c">Status</th>
+            </tr>
+          </thead>
+          <tbody id="bill-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Send -->
+    <div class="card">
+      <div class="send-section">
+        <p class="send-note" id="send-note">Sends one combined email per member covering both House Bill + Food Mess.</p>
+        <button class="btn-send house-send" id="send-btn" onclick="handleSend()">
+          📧&nbsp;&nbsp;Send Bills to All Members
+        </button>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script src="config.js"></script>
+<script src="script.js"></script>
+<script>
+  let expenses = loadHouseItems();
+  let statusCells = [];
+
+  document.getElementById("month-display").textContent = getCurrentMonth().toUpperCase();
+  renderExpenses();
+  renderBillTable();
+  updateStats();
+
+  function updateStats() {
+    const total    = expenses.reduce((s, e) => s + Number(e.amount), 0);
+    const perPerson = expenses.length > 0 ? Math.round((total / members.length) * 100) / 100 : 0;
+    const houseTotal = RENT + perPerson;
+    document.getElementById("stat-additional").textContent  = total.toLocaleString(undefined, {maximumFractionDigits:0});
+    document.getElementById("stat-per-person").textContent  = perPerson.toLocaleString(undefined, {maximumFractionDigits:2});
+    document.getElementById("stat-house-total").textContent = houseTotal.toLocaleString(undefined, {maximumFractionDigits:2});
+  }
+
+  function addExpense() {
+    const nameEl   = document.getElementById("item-name");
+    const amountEl = document.getElementById("item-amount");
+    const name     = nameEl.value.trim();
+    const amount   = parseFloat(amountEl.value);
+    if (!name || isNaN(amount) || amount <= 0) { alert("Please enter a valid item name and amount."); return; }
+    expenses.push({ item: name, amount });
+    saveHouseItems(expenses);
+    nameEl.value = ""; amountEl.value = "";
+    renderExpenses(); renderBillTable(); updateStats();
+  }
+
+  document.getElementById("item-name").addEventListener("keydown",   e => { if (e.key === "Enter") document.getElementById("item-amount").focus(); });
+  document.getElementById("item-amount").addEventListener("keydown", e => { if (e.key === "Enter") addExpense(); });
+
+  function deleteExpense(idx) {
+    expenses.splice(idx, 1);
+    saveHouseItems(expenses);
+    renderExpenses(); renderBillTable(); updateStats();
+  }
+
+  function renderExpenses() {
+    const list     = document.getElementById("expense-list");
+    const totalDiv = document.getElementById("expense-total");
+    if (expenses.length === 0) {
+      list.innerHTML = '<p class="empty-msg">No additional expenses yet.</p>';
+      totalDiv.style.display = "none";
+      return;
+    }
+    const total     = expenses.reduce((s, e) => s + Number(e.amount), 0);
+    const perPerson = total / members.length;
+    list.innerHTML  = expenses.map((e, i) => `
+      <div class="expense-item">
+        <span class="item-name">${escHtml(e.item)}</span>
+        <span class="item-amount">${Number(e.amount).toLocaleString()} AED</span>
+        <button class="btn-delete" onclick="deleteExpense(${i})" title="Remove">✕</button>
+      </div>`).join("");
+    totalDiv.style.display = "flex";
+    document.getElementById("total-amount").textContent     = total.toLocaleString(undefined, {maximumFractionDigits:2});
+    document.getElementById("per-person-amount").textContent = perPerson.toLocaleString(undefined, {maximumFractionDigits:2});
+  }
+
+  function renderBillTable() {
+    const total      = expenses.reduce((s, e) => s + Number(e.amount), 0);
+    const addShare   = expenses.length > 0 ? Math.round((total / members.length) * 100) / 100 : 0;
+    const houseTotal = RENT + addShare;
+    const tbody      = document.getElementById("bill-table-body");
+    tbody.innerHTML  = members.map((m, i) => {
+      const initials = m.name.split(" ").map(w => w[0]).join("").slice(0,2).toUpperCase();
+      return `<tr>
+        <td><div class="name-col">
+          <div class="avatar">${initials}</div>
+          <span class="name-text">${escHtml(m.name)}</span>
+        </div></td>
+        <td class="amount-col">${RENT.toLocaleString()}</td>
+        <td class="amount-col">${addShare.toLocaleString(undefined, {maximumFractionDigits:2})}</td>
+        <td class="total-col">${houseTotal.toLocaleString(undefined, {maximumFractionDigits:2})}</td>
+        <td class="status-col status-pending" id="status-${i}">—</td>
+      </tr>`;
+    }).join("");
+    statusCells = members.map((_, i) => document.getElementById(`status-${i}`));
+  }
+
+  async function handleSend() {
+    const btn = document.getElementById("send-btn");
+    btn.disabled = true;
+    btn.textContent = "Sending…";
+    await sendBills(statusCells);
+    btn.disabled = false;
+    btn.innerHTML = "📧&nbsp;&nbsp;Send Bills to All Members";
+  }
+
+  function escHtml(str) {
+    return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+</script>
+</body>
+</html>

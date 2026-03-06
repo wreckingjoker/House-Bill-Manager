@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Food Mess Manager</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="page-wrap">
+
+  <!-- Top bar -->
+  <div class="top-bar">
+    <div class="brand">
+      <span class="brand-emoji" style="filter:drop-shadow(0 0 18px rgba(245,158,11,0.5))">🍽️</span>
+      <div class="brand-title amber-grad">Food Mess</div>
+      <div class="brand-month" id="month-display"></div>
+    </div>
+    <nav class="nav-pills">
+      <a href="index.html">House Bill</a>
+      <a href="food.html" class="active-food">Food Mess</a>
+    </nav>
+  </div>
+
+  <div class="rule"></div>
+
+  <main>
+
+    <!-- Stat chips -->
+    <div class="stat-row">
+      <div class="stat-chip amber">
+        <div class="s-label">Active Meal Plans</div>
+        <div class="s-value" id="stat-active">0</div>
+        <div class="s-sub">members enrolled</div>
+      </div>
+      <div class="stat-chip teal">
+        <div class="s-label">Total Food Revenue</div>
+        <div class="s-value" id="stat-food-total">0</div>
+        <div class="s-sub">AED this month</div>
+      </div>
+      <div class="stat-chip indigo">
+        <div class="s-label">Average Cost</div>
+        <div class="s-value" id="stat-avg">0</div>
+        <div class="s-sub">AED per member</div>
+      </div>
+    </div>
+
+    <!-- Meal Plan Table -->
+    <div class="card stripe-amber">
+      <div class="card-head">
+        <span class="card-title">Meal Plan Selection</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Member</th>
+              <th>Meal Plan</th>
+              <th class="r">Cost (AED)</th>
+              <th class="c">Status</th>
+            </tr>
+          </thead>
+          <tbody id="food-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Plan breakdown -->
+    <div class="card stripe-amber">
+      <div class="card-head">
+        <span class="card-title">Plan Breakdown</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Plan</th>
+              <th class="r">Cost / Month</th>
+              <th class="r">Members</th>
+            </tr>
+          </thead>
+          <tbody id="summary-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Send -->
+    <div class="card">
+      <div class="send-section">
+        <p class="send-note" id="send-note">Sends one combined email per member covering both House Bill + Food Mess.</p>
+        <button class="btn-send food-send" id="send-btn" onclick="handleSend()">
+          📧&nbsp;&nbsp;Send Bills to All Members
+        </button>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script src="script.js"></script>
+<script>
+  let selections = loadFoodSelections();
+
+  document.getElementById("month-display").textContent = getCurrentMonth().toUpperCase();
+  renderFoodTable();
+  renderSummary();
+  updateStats();
+
+  function updateStats() {
+    let active = 0, total = 0;
+    members.forEach(m => {
+      const key = selections[m.name] || "none";
+      const cost = MEAL_PLANS[key].cost;
+      if (key !== "none") active++;
+      total += cost;
+    });
+    const avg = members.length > 0 ? Math.round(total / members.length) : 0;
+    document.getElementById("stat-active").textContent     = active;
+    document.getElementById("stat-food-total").textContent = total.toLocaleString();
+    document.getElementById("stat-avg").textContent        = avg.toLocaleString();
+  }
+
+  let statusCells = [];
+
+  function renderFoodTable() {
+    statusCells = [];
+    const tbody = document.getElementById("food-table-body");
+    tbody.innerHTML = members.map((m, i) => {
+      const planKey  = selections[m.name] || "none";
+      const plan     = MEAL_PLANS[planKey];
+      const initials = m.name.split(" ").map(w => w[0]).join("").slice(0,2).toUpperCase();
+      const opts     = Object.entries(MEAL_PLANS).map(([key, p]) =>
+        `<option value="${key}" ${key === planKey ? "selected" : ""}>${p.label}</option>`).join("");
+      return `<tr>
+        <td><div class="name-col">
+          <div class="avatar av-amber">${initials}</div>
+          <span class="name-text">${escHtml(m.name)}</span>
+        </div></td>
+        <td><select class="meal-plan" onchange="setPlan('${escHtml(m.name)}', this.value)">${opts}</select></td>
+        <td class="total-col amber" id="cost-${i}">${plan.cost.toLocaleString()} AED</td>
+        <td class="status-col status-pending" id="status-${i}">—</td>
+      </tr>`;
+    }).join("");
+    statusCells = members.map((_, i) => document.getElementById(`status-${i}`));
+  }
+
+  function setPlan(memberName, planKey) {
+    selections[memberName] = planKey;
+    saveFoodSelections(selections);
+    const idx  = members.findIndex(m => m.name === memberName);
+    const plan = MEAL_PLANS[planKey];
+    document.getElementById(`cost-${idx}`).textContent = plan.cost.toLocaleString() + " AED";
+    renderSummary();
+    updateStats();
+  }
+
+  function renderSummary() {
+    const counts = { none: 0, "1x": 0, "2x": 0, "3x": 0 };
+    members.forEach(m => { const key = selections[m.name] || "none"; counts[key] = (counts[key] || 0) + 1; });
+    const tbody = document.getElementById("summary-body");
+    tbody.innerHTML = Object.entries(MEAL_PLANS).map(([key, plan]) => {
+      const n = counts[key] || 0;
+      return `<tr>
+        <td class="name-text" style="padding:12px 16px">${plan.label}</td>
+        <td class="amount-col">${plan.cost.toLocaleString()} AED</td>
+        <td class="amount-col">${n} member${n !== 1 ? "s" : ""}</td>
+      </tr>`;
+    }).join("");
+  }
+
+  async function handleSend() {
+    const btn = document.getElementById("send-btn");
+    btn.disabled = true;
+    btn.textContent = "Sending…";
+    await sendBills(statusCells);
+    btn.disabled = false;
+    btn.innerHTML = "📧&nbsp;&nbsp;Send Bills to All Members";
+  }
+
+  function escHtml(str) {
+    return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+</script>
+</body>
+</html>
